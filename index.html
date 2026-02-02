@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>MyGramChat</title>
+<meta name="title" content="MyGramChat">
+<meta name="description" content="Реалии чат, редакт профил, поиск пользователей и подписки.">
+<meta name="keywords" content="чат, MyGramChat, чат онлайн, социальная сеть">
+<meta name="robots" content="index, follow">
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<style>
+/* GLOBAL */
+body{margin:0;font-family:Arial,sans-serif;background:#05081f;color:white;}
+input,button{outline:none;}
+button{cursor:pointer;}
+
+/* BOXES */
+.box{background:#2b2a2a;width:90%;max-width:400px;padding:25px;border-radius:25px;text-align:center;color:white;margin:50px auto;}
+input{width:100%;padding:10px;margin-bottom:12px;border-radius:13px;border:1px solid #00caa7;background:#4e4e4e;color:white;}
+button{width:100%;padding:10px;border:none;border-radius:20px;background:#3897f0;color:white;font-weight:bold;}
+.link{margin-top:10px;font-size:14px;color:#3897f0;cursor:pointer;}
+.link span{font-weight:bold;}
+.error{color:red;font-size:14px;}
+.hidden{display:none;}
+
+/* HOME / CHAT */
+#homeBox,#chatBox{display:none;flex-direction:column;align-items:center;width:100%;height:100vh;overflow:auto;}
+.header{display:flex;justify-content:space-between;align-items:center;padding:15px;border-bottom:1px solid #333;width:100%;box-sizing:border-box;}
+.header h2{margin:0;font-size:20px;}
+.search input{padding:7px;border-radius:10px;border:none;width:200px;}
+.profile{text-align:center;padding:20px;width:100%;}
+.profile img{width:120px;height:120px;border-radius:50%;border:3px solid #3897f0;cursor:pointer;object-fit:cover;}
+.stats{display:flex;justify-content:space-around;margin-top:10px;text-align:center;}
+.nav{position:fixed;bottom:0;width:100%;display:flex;justify-content:space-around;background:#111;padding:10px 0;box-sizing:border-box;}
+.nav div{cursor:pointer;font-size:24px;}
+
+/* SEARCH RESULTS */
+.userResult{padding:8px;border-bottom:1px solid #555;cursor:pointer;display:flex;justify-content:space-between;align-items:center;}
+.followBtn{padding:5px 10px;border-radius:10px;background:#3897f0;color:white;border:none;cursor:pointer;}
+.chatMessage{display:flex;align-items:center;margin-bottom:8px;}
+.chatMessage img{width:40px;height:40px;border-radius:50%;margin-right:10px;}
+
+/* MODALS */
+#editProfileModal,#chatModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);justify-content:center;align-items:center;z-index:999;}
+.modalContent{background:#2b2a2a;padding:20px;border-radius:15px;text-align:center;width:90%;max-width:350px;}
+#editProfileModal input{margin-bottom:10px;}
+.modalBtn{margin-top:10px;width:48%;margin-right:2%;}
+.modalBtn:last-child{margin-right:0;}
+
+/* CHAT INPUT */
+#chatInput{width:75%;padding:10px;margin:10px;border-radius:15px;border:1px solid #00caa7;background:#4e4e4e;color:white;}
+.sendBtn{width:20%;padding:10px;border:none;border-radius:15px;background:#3897f0;color:white;margin-left:5px;}
+.chatInputWrapper{display:flex;width:95%;justify-content:space-between;margin-bottom:20px;}
+@media(max-width:500px){
+  .stats{flex-direction:column;gap:8px;}
+  .header h2{font-size:18px;}
+  .search input{width:140px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="box" id="loginBox">
+<h2>MyGramChat</h2>
+<div class="error" id="loginError"></div>
+<input id="loginEmail" placeholder="Email">
+<input id="loginPass" type="password" placeholder="Password">
+<button onclick="login()">Log In</button>
+<div class="link" onclick="showForgot()">Forgot password?</div>
+<div class="link">Don’t have an account? <span onclick="showRegister()">Sign Up</span></div>
+</div>
+
+<!-- REGISTER -->
+<div class="box hidden" id="registerBox">
+<h2>Register</h2>
+<div class="error" id="regError"></div>
+<input id="regUsername" placeholder="Username (a-z,min5)">
+<input id="regEmail" placeholder="Email">
+<input id="regPass" type="password" placeholder="Password">
+<button onclick="register()">Register</button>
+<div class="link">Already have an account? <span onclick="showLogin()">Log In</span></div>
+</div>
+
+<!-- FORGOT PASSWORD -->
+<div class="box hidden" id="forgotBox">
+<h2>Reset Password</h2>
+<div class="error" id="forgotError"></div>
+<input id="forgotEmail" placeholder="Your Email">
+<button onclick="resetPassword()">Send reset email</button>
+<div class="link" onclick="showLogin()">Back to login</div>
+</div>
+
+<!-- HOME -->
+<div id="homeBox">
+  <div class="header">
+    <h2>MyGramChat</h2>
+    <div class="search"><input id="searchInput" placeholder="Поиск пользователей" oninput="searchUsers()"></div>
+  </div>
+  <div class="profile">
+    <img id="profilePic" src="https://i.imgur.com/1X6VZQp.png" title="Нажмите чтобы редактировать профиль" onclick="openEditProfile()">
+    <h3 id="usernameHome">username</h3>
+    <div class="stats">
+      <div><b id="postCount">0</b><br>Посты</div>
+      <div><b id="followersCount">0</b><br>Подписчики</div>
+      <div><b id="followingCount">0</b><br>Подписки</div>
+    </div>
+    <button onclick="openEditProfile()" style="margin-top:10px;">Редактировать профиль</button>
+  </div>
+  <div id="searchResults"></div>
+  <div class="nav">
+    <div>🏠</div>
+    <div onclick="openChat()">💬</div>
+    <div onclick="logout()">🚪</div>
+  </div>
+</div>
+
+<!-- CHAT -->
+<div id="chatBox">
+  <div class="header">
+    <button onclick="backToProfile()">⬅ Назад</button>
+    <h2>Чат</h2>
+  </div>
+  <div style="flex:1;padding:10px;overflow-y:auto;width:100%;" id="chatContent">ПАЁМ НЕСТ</div>
+  <div class="chatInputWrapper">
+    <input id="chatInput" placeholder="Напишите сообщение..." onkeypress="if(event.key==='Enter'){sendMessage()}">
+    <button class="sendBtn" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<!-- EDIT PROFILE -->
+<div id="editProfileModal">
+  <div class="modalContent">
+    <h3>Редактировать профиль</h3>
+    <input id="editUsername" placeholder="Новый username">
+    <input type="file" id="editProfileFile" accept="image/*">
+    <div>
+      <button class="modalBtn" onclick="saveProfile()">Готово</button>
+      <button class="modalBtn" onclick="closeProfileModal()">Отмена</button>
+    </div>
+    <div class="error" id="usernameError"></div>
+  </div>
+</div>
+
+<script>
+// Firebase
+const firebaseConfig={apiKey:"AIzaSyChNBy-be5z2FdhG-4QZpLIgsZTo4v8li8",authDomain:"mygram-74b48.firebaseapp.com",projectId:"mygram-74b48",storageBucket:"mygram-74b48.appspot.com",messagingSenderId:"262338393496",appId:"1:262338393496:web:772983b0e71b1f9e9127ed"};
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth(),db=firebase.firestore(),storage=firebase.storage();
+
+/* SHOW/HIDE */
+function showLogin(){document.querySelectorAll(".box").forEach(b=>b.classList.add("hidden"));loginBox.classList.remove("hidden");}
+function showRegister(){document.querySelectorAll(".box").forEach(b=>b.classList.add("hidden"));registerBox.classList.remove("hidden");}
+function showForgot(){document.querySelectorAll(".box").forEach(b=>b.classList.add("hidden"));forgotBox.classList.remove("hidden");}
+
+/* REGISTER */
+function register(){
+  const username=regUsername.value.trim(),email=regEmail.value.trim(),pass=regPass.value;
+  if(!username){regError.innerText="Введите username";return;}
+  if(!/^[a-z0-9_\-\+]{5,}$/.test(username)){regError.innerText="Username минимум 5 символов";return;}
+  if(!email||!pass){regError.innerText="Заполните все поля";return;}
+  db.collection("users").where("username","==",username).get().then(snapshot=>{
+    if(!snapshot.empty){regError.innerText="Этот username занят";return;}
+    auth.createUserWithEmailAndPassword(email,pass)
+      .then(async userCredential=>{
+        const user=userCredential.user;
+        await user.sendEmailVerification();
+        await db.collection("users").doc(user.uid).set({username,email,createdAt:new Date(),profilePic:"https://i.imgur.com/1X6VZQp.png",followers:[],following:[]});
+        alert("Письмо для подтверждения отправлено 📩");
+        loadHome(user.uid);
+      }).catch(err=>{if(err.code==="auth/email-already-in-use"){regError.innerText="Этот email уже используется";}else{regError.innerText=err.message;}});
+  });
+}
+
+/* LOGIN */
+function login(){
+  const email=loginEmail.value.trim(),pass=loginPass.value;
+  auth.signInWithEmailAndPassword(email,pass)
+    .then(userCredential=>{
+      const user=userCredential.user;
+      if(!user.emailVerified){loginError.innerText="Подтвердите email 📩";auth.signOut();return;}
+      document.querySelectorAll(".box").forEach(b=>b.classList.add("hidden"));
+      document.getElementById("homeBox").style.display="flex";
+      loadHome(user.uid);
+    }).catch(err=>loginError.innerText=err.message);
+}
+
+/* RESET PASSWORD */
+function resetPassword(){
+  const email=forgotEmail.value.trim();
+  if(!email){forgotError.innerText="Введите email";return;}
+  auth.sendPasswordResetEmail(email).then(()=>{alert("Письмо для сброса отправлено 📩");showLogin();}).catch(err=>forgotError.innerText=err.message);
+}
+
+/* LOAD HOME PROFILE */
+function loadHome(uid){
+  db.collection("users").doc(uid).get().then(doc=>{
+    if(doc.exists){
+      const data=doc.data();
+      document.getElementById("usernameHome").innerText=data.username;
+      document.getElementById("profilePic").src=data.profilePic;
+      document.getElementById("followersCount").innerText=data.followers.length;
+      document.getElementById("followingCount").innerText=data.following.length;
+    }
+  });
+}
+
+/* LOGOUT */
+function logout(){if(confirm("Вы действительно хотите выйти?")){auth.signOut().then(()=>{document.getElementById("homeBox").style.display="none";showLogin();});}}
+
+/* EDIT PROFILE */
+function openEditProfile(){document.getElementById("editProfileModal").style.display="flex";document.getElementById("editUsername").value=document.getElementById("usernameHome").innerText;}
+function closeProfileModal(){document.getElementById("editProfileModal").style.display="none";}
+async function saveProfile(){
+  const user=auth.currentUser;
+  const newUsername=document.getElementById("editUsername").value.trim();
+  const file=document.getElementById("editProfileFile").files[0];
+  const usernameError=document.getElementById("usernameError");
+  usernameError.innerText="";
+  if(!/^[a-z0-9_\-\+]{5,}$/.test(newUsername)){usernameError.innerText="Неверный username"; return;}
+  const snapshot=await db.collection("users").where("username","==",newUsername).get();
+  if(!snapshot.empty && snapshot.docs[0].id!==user.uid){usernameError.innerText="Этот username занят"; return;}
+  let profilePicURL=document.getElementById("profilePic").src;
+  if(file){
+    const storageRef=storage.ref('avatars/'+user.uid+'/'+file.name);
+    await storageRef.put(file);
+    profilePicURL=await storageRef.getDownloadURL();
+  }
+  await db.collection("users").doc(user.uid).update({username:newUsername,profilePic:profilePicURL});
+  document.getElementById("usernameHome").innerText=newUsername;
+  document.getElementById("profilePic").src=profilePicURL;
+  closeProfileModal();
+}
+
+/* SEARCH USERS */
+function searchUsers(){
+  const query=document.getElementById("searchInput").value.trim().toLowerCase();
+  const resultsDiv=document.getElementById("searchResults");
+  if(!query){resultsDiv.innerHTML="";return;}
+  db.collection("users").get().then(snapshot=>{
+    resultsDiv.innerHTML="";
+    snapshot.forEach(doc=>{
+      const uname=doc.data().username.toLowerCase();
+      if(uname.includes(query)){
+        const div=document.createElement("div");
+        div.className="userResult";
+        div.innerText=doc.data().username;
+        const followBtn=document.createElement("button");
+        followBtn.className="followBtn";
+        followBtn.innerText="Follow";
+        followBtn.onclick=()=>{toggleFollow(doc.id, followBtn);};
+        div.appendChild(followBtn);
+        div.onclick=()=>{openPrivateChat(doc.id);};
+        resultsDiv.appendChild(div);
+      }
+    });
+  });
+}
+
+/* FOLLOW / UNFOLLOW */
+function toggleFollow(otherUid,btn){
+  const user=auth.currentUser;
+  const userRef=db.collection("users").doc(user.uid);
+  const otherRef=db.collection("users").doc(otherUid);
+  userRef.get().then(doc=>{
+    const data=doc.data();
+    let following=data.following||[];
+    if(following.includes(otherUid)){following=following.filter(u=>u!==otherUid); btn.innerText="Follow";}
+    else{following.push(otherUid); btn.innerText="Unfollow";}
+    userRef.update({following});
+    otherRef.get().then(d=>{
+      let followers=d.data().followers||[];
+      if(followers.includes(user.uid)){followers=followers.filter(u=>u!==user.uid);}else{followers.push(user.uid);}
+      otherRef.update({followers});
+    });
+  });
+}
+
+/* CHAT */
+let currentChatUserId=null;
+function openChat(){document.getElementById("homeBox").style.display="none";document.getElementById("chatBox").style.display="flex";}
+function backToProfile(){document.getElementById("chatBox").style.display="none";document.getElementById("homeBox").style.display="flex";}
+function openPrivateChat(otherUid){currentChatUserId=otherUid;openChat();loadPrivateChat();}
+function loadPrivateChat(){
+  const chatContent=document.getElementById("chatContent");
+  if(!currentChatUserId){chatContent.innerText="ПАЁМ НЕСТ";return;}
+  chatContent.innerHTML="";
+  db.collection("private_chats").where("participants","array-contains",auth.currentUser.uid)
+    .orderBy("createdAt")
+    .onSnapshot(snapshot=>{
+      chatContent.innerHTML="";
+      let hasMessages=false;
+      snapshot.forEach(doc=>{
+        const data=doc.data();
+        if(data.participants.includes(currentChatUserId)){
+          hasMessages=true;
+          data.messages.forEach(msg=>{
+            const div=document.createElement("div");
+            div.className="chatMessage";
+            div.innerHTML=`<img src="${msg.profilePic}"><b>${msg.username}:</b> ${msg.text}`;
+            chatContent.appendChild(div);
+          });
+        }
+      });
+      if(!hasMessages){chatContent.innerText="ПАЁМ НЕСТ";}
+      chatContent.scrollTop=chatContent.scrollHeight;
+    });
+}
+function sendMessage(){
+  const text=document.getElementById("chatInput").value.trim();
+  if(!text||!currentChatUserId) return;
+  const user=auth.currentUser;
+  db.collection("users").doc(user.uid).get().then(doc=>{
+    const data=doc.data();
+    const chatRef=db.collection("private_chats").where("participants","array-contains",user.uid);
+    chatRef.get().then(snapshot=>{
+      let chatDoc=null;
+      snapshot.forEach(d=>{if(d.data().participants.includes(currentChatUserId)) chatDoc=d;});
+      if(chatDoc){
+        const messages=chatDoc.data().messages || [];
+        messages.push({username:data.username,profilePic:data.profilePic,text,createdAt:new Date()});
+        db.collection("private_chats").doc(chatDoc.id).update({messages});
+      }else{
+        db.collection("private_chats").add({participants:[user.uid,currentChatUserId],messages:[{username:data.username,profilePic:data.profilePic,text,createdAt:new Date()}],createdAt:new Date()});
+      }
+      document.getElementById("chatInput").value="";
+    });
+  });
+}
+
+/* AUTH STATE */
+auth.onAuthStateChanged(user=>{
+  if(user && user.emailVerified){document.querySelectorAll(".box").forEach(b=>b.classList.add("hidden"));document.getElementById("homeBox").style.display="flex";loadHome(user.uid);}
+});
+</script>
+
+</body>
+</html>
